@@ -1,0 +1,31 @@
+{
+	"comment": "",
+	"ignore": "test",
+	"package": [
+		{
+			"path": "github.com/google/go-github/github",
+			"revision": "44b1ede22d71e26fa5d7af7a50204f7e6daadfc8",
+			"revisionTime": "2015-11-25T23:26:20-08:00"
+		},
+		{
+			"path": "github.com/google/go-querystring/query",
+			"revision": "2a60fc2ba6c19de80291203597d752e9ba58e4c0",
+			"revisionTime": "2015-10-28T14:53:53-04:00"
+		},
+		{
+			"path": "golang.org/x/net/context",
+			"revision": "2e9cee70ee697e0a2ef894b560dda50dec7dff58",
+			"revisionTime": "2016-01-21T16:20:05Z"
+		},
+		{
+			"path": "golang.org/x/oauth2",
+			"revision": "8a57ed94ffd43444c0879fe75701732a38afc985",
+			"revisionTime": "2015-12-29T21:02:54-07:00"
+		},
+		{
+			"path": "golang.org/x/oauth2/internal",
+			"revision": "8a57ed94ffd43444c0879fe75701732a38afc985",
+			"revisionTime": "2015-12-29T21:02:54-07:00"
+		}
+	]
+}
