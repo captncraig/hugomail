@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -16,11 +17,12 @@ import (
 )
 
 type config struct {
-	GithubToken string
-	GithubUser  string
-	GithubRepo  string
-	Path        string
-	Authors     map[string]string
+	GithubToken  string
+	GithubUser   string
+	GithubRepo   string
+	Path         string
+	MailgunToken string
+	Authors      map[string]string
 }
 
 var conf config
@@ -49,7 +51,7 @@ func main() {
 	client = github.NewClient(tc)
 
 	http.HandleFunc("/api/publish", mailgunHook)
-	http.ListenAndServe(":8787", nil)
+	http.ListenAndServe(":5555", nil)
 }
 
 func logErr(w http.ResponseWriter, err error) {
@@ -58,6 +60,13 @@ func logErr(w http.ResponseWriter, err error) {
 }
 
 var tagsRegex = regexp.MustCompile(`^\[([^\]]+)\]`)
+
+type attachments []struct {
+	URL         string `json:"url"`
+	ContentType string `json:"content-type"`
+	Name        string `json:"name"`
+	Size        int    `json:"size"`
+}
 
 func mailgunHook(w http.ResponseWriter, r *http.Request) {
 	err := r.ParseForm()
@@ -68,10 +77,6 @@ func mailgunHook(w http.ResponseWriter, r *http.Request) {
 	body := r.FormValue("body-plain")
 	sender := r.FormValue("sender")
 	subject := r.FormValue("subject")
-
-	fmt.Println(body)
-	fmt.Println(sender)
-	fmt.Println(subject)
 
 	sender, ok := conf.Authors[sender]
 	if !ok {
@@ -85,7 +90,48 @@ func mailgunHook(w http.ResponseWriter, r *http.Request) {
 		subject = strings.TrimSpace(subject[len(tagsMatch[0]):])
 		tags = strings.Split(tagsMatch[1], ",")
 	}
-	makePost(subject, body, sender, tags, time.Now())
+
+	if jsn := r.FormValue("attachments"); jsn != "" {
+		attaches := attachments{}
+		if err := json.Unmarshal([]byte(jsn), &attaches); err == nil {
+			for _, a := range attaches {
+				if a.ContentType != "image/png" && a.ContentType != "image/jpg" && a.ContentType != "image/jpeg" && a.ContentType != "image/gif" {
+					log.Printf("Unrecognized content type: %s. Skipping.", a.ContentType)
+					continue
+				}
+				req, err := http.NewRequest("GET", a.URL, nil)
+				if err != nil {
+					log.Println("Error creating attachment request ", err)
+					continue
+				}
+				req.SetBasicAuth("api", conf.MailgunToken)
+				resp, err := http.DefaultClient.Do(req)
+				if err != nil {
+					log.Println("Error getting attachment ", err)
+					continue
+				}
+				defer resp.Body.Close()
+				if resp.StatusCode != 200 {
+					log.Printf("Unrecognized status code for attachment: %d. Skipping.", resp.StatusCode)
+					continue
+				}
+				dat, err := ioutil.ReadAll(resp.Body)
+				resp.Body.Close()
+				if err != nil {
+					log.Println("Error getting attachment ", err)
+					continue
+				}
+				b64 := base64.StdEncoding.EncodeToString(dat)
+				log.Println(b64)
+				body += fmt.Sprintf("\n\n![img](data:%s;base64,%s)", a.ContentType, b64)
+				log.Println(body)
+			}
+		}
+	}
+	err = makePost(subject, body, sender, tags, time.Now())
+	if err != nil {
+		log.Println("Crap!", err)
+	}
 }
 
 var msg = "Automatic Publish"
