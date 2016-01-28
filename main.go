@@ -50,9 +50,6 @@ func main() {
 
 	client = github.NewClient(tc)
 
-	fmt.Println(makePost("TEST123", "FOOOO BAR", "Craig", []string{"Foo", "Bar"}, time.Now(), map[string][]byte{"foo.txt": []byte{55, 55, 55}}))
-	return
-
 	http.HandleFunc("/api/publish", mailgunHook)
 	http.ListenAndServe(":5555", nil)
 }
