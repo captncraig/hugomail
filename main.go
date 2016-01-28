@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/google/go-github/github"
 	"golang.org/x/oauth2"
@@ -168,12 +169,13 @@ func makePost(title, body, author string, tags []string, timestamp time.Time, at
 	//add all files to /static
 	for name, dat := range attachments {
 		opts.Content = dat
-		loc := fmt.Sprintf("static/%s-%s", stamp, name)
+		fn := fmt.Sprintf("img/%s-%s", stamp, sanitize(name))
+		loc := "static/" + fn
 		_, _, err = client.Repositories.CreateFile(conf.GithubUser, conf.GithubRepo, loc, opts)
-		content += fmt.Sprintf("\n\n![%s](/%s)", name, loc)
+		content += fmt.Sprintf("\n\n![%s](/%s)", name, fn)
 	}
 	//create post
-	fileName := conf.Path + fmt.Sprintf("/%s-%s.md", stamp, strings.Replace(title, " ", "-", -1))
+	fileName := conf.Path + fmt.Sprintf("/%s-%s.md", stamp, sanitize(title))
 	opts.Content = []byte(content)
 	_, _, err = client.Repositories.CreateFile(conf.GithubUser, conf.GithubRepo, fileName, opts)
 
@@ -183,4 +185,16 @@ func makePost(title, body, author string, tags []string, timestamp time.Time, at
 	req.Base = &master
 	_, _, err = client.Repositories.Merge(conf.GithubUser, conf.GithubRepo, req)
 	return err
+}
+
+func sanitize(name string) string {
+	out := []rune{}
+	for _, c := range name {
+		if unicode.IsDigit(c) || unicode.IsLetter(c) || c == '.' {
+			out = append(out, c)
+		} else {
+			out = append(out, '-')
+		}
+	}
+	return string(out)
 }
