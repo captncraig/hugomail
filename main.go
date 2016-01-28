@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -32,6 +31,7 @@ var confFile = flag.String("c", "conf.json", "Location of config file")
 var client *github.Client
 
 func main() {
+
 	flag.Parse()
 
 	cDat, err := ioutil.ReadFile(*confFile)
@@ -49,6 +49,9 @@ func main() {
 	tc := oauth2.NewClient(oauth2.NoContext, ts)
 
 	client = github.NewClient(tc)
+
+	fmt.Println(makePost("TEST123", "FOOOO BAR", "Craig", []string{"Foo", "Bar"}, time.Now(), map[string][]byte{"foo.txt": []byte{55, 55, 55}}))
+	return
 
 	http.HandleFunc("/api/publish", mailgunHook)
 	http.ListenAndServe(":5555", nil)
@@ -91,6 +94,7 @@ func mailgunHook(w http.ResponseWriter, r *http.Request) {
 		tags = strings.Split(tagsMatch[1], ",")
 	}
 
+	files := map[string][]byte{}
 	if jsn := r.FormValue("attachments"); jsn != "" {
 		attaches := attachments{}
 		if err := json.Unmarshal([]byte(jsn), &attaches); err == nil {
@@ -121,22 +125,20 @@ func mailgunHook(w http.ResponseWriter, r *http.Request) {
 					log.Println("Error getting attachment ", err)
 					continue
 				}
-				b64 := base64.StdEncoding.EncodeToString(dat)
-				log.Println(b64)
-				body += fmt.Sprintf("\n\n![img](data:%s;base64,%s)", a.ContentType, b64)
-				log.Println(body)
+				files[a.Name] = dat
 			}
 		}
 	}
-	err = makePost(subject, body, sender, tags, time.Now())
+	err = makePost(subject, body, sender, tags, time.Now(), files)
 	if err != nil {
 		log.Println("Crap!", err)
 	}
 }
 
 var msg = "Automatic Publish"
+var master = "master"
 
-func makePost(title, body, author string, tags []string, timestamp time.Time) error {
+func makePost(title, body, author string, tags []string, timestamp time.Time, attachments map[string][]byte) error {
 	preamble := struct {
 		Date          time.Time
 		Title, Author string
@@ -150,10 +152,38 @@ func makePost(title, body, author string, tags []string, timestamp time.Time) er
 	}
 	content := string(dat) + "\n" + body
 
-	fileName := conf.Path + fmt.Sprintf("/%s-%s.md", timestamp.Format("2006-01-02-1504"), strings.Replace(title, " ", "-", -1))
+	stamp := timestamp.Format("2006-01-02-1504")
+
+	//get master sha
+	ref, _, err := client.Git.GetRef(conf.GithubUser, conf.GithubRepo, "refs/heads/master")
+	if err != nil {
+		return err
+	}
+	//make new temp branch
+	refName := fmt.Sprintf("refs/heads/%s", stamp)
+	_, _, err = client.Git.CreateRef(conf.GithubUser, conf.GithubRepo, &github.Reference{Ref: &refName, Object: ref.Object})
+	if err != nil {
+		return err
+	}
 	opts := &github.RepositoryContentFileOptions{}
-	opts.Content = []byte(content)
 	opts.Message = &msg
+	opts.Branch = &stamp
+	//add all files to /static
+	for name, dat := range attachments {
+		opts.Content = dat
+		loc := fmt.Sprintf("static/%s-%s", stamp, name)
+		_, _, err = client.Repositories.CreateFile(conf.GithubUser, conf.GithubRepo, loc, opts)
+		content += fmt.Sprintf("\n\n![%s](/%s)", name, loc)
+	}
+	//create post
+	fileName := conf.Path + fmt.Sprintf("/%s-%s.md", stamp, strings.Replace(title, " ", "-", -1))
+	opts.Content = []byte(content)
 	_, _, err = client.Repositories.CreateFile(conf.GithubUser, conf.GithubRepo, fileName, opts)
+
+	//finally merge branch into master and delete
+	req := &github.RepositoryMergeRequest{}
+	req.Head = &stamp
+	req.Base = &master
+	_, _, err = client.Repositories.Merge(conf.GithubUser, conf.GithubRepo, req)
 	return err
 }
