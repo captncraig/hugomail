@@ -178,7 +178,9 @@ func makePost(title, body, author string, tags []string, timestamp time.Time, at
 	fileName := conf.Path + fmt.Sprintf("/%s-%s.md", stamp, sanitize(title))
 	opts.Content = []byte(content)
 	_, _, err = client.Repositories.CreateFile(conf.GithubUser, conf.GithubRepo, fileName, opts)
-
+	if err != nil {
+		return err
+	}
 	//finally merge branch into master and delete
 	req := &github.RepositoryMergeRequest{}
 	req.Head = &stamp
@@ -189,11 +191,14 @@ func makePost(title, body, author string, tags []string, timestamp time.Time, at
 
 func sanitize(name string) string {
 	out := []rune{}
+	chain := false
 	for _, c := range name {
 		if unicode.IsDigit(c) || unicode.IsLetter(c) || c == '.' {
+			chain = false
 			out = append(out, c)
-		} else {
+		} else if !chain {
 			out = append(out, '-')
+			chain = true
 		}
 	}
 	return string(out)
